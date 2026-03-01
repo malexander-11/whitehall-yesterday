@@ -22,7 +22,7 @@ class IngestionService(
      * Runs a full ingest for [date] across all registered sources and returns the result.
      *
      * Lifecycle:
-     *  1. Open run (status = RUNNING). If one is already RUNNING or SUCCESS, return early.
+     *  1. Open run (status = RUNNING). If one is already RUNNING, return early (concurrent guard).
      *  2. Call each [SourceIngester] to fetch items for the date window.
      *  3. Classify GOV.UK items as NEW/UPDATED via DB lookup; Parliament items are always NEW.
      *  4. Upsert all items.
@@ -33,11 +33,12 @@ class IngestionService(
         val window = DateWindow.forDate(date)
         log.info("Ingestion started date={} window=[{}, {})", date, window.start, window.end)
 
-        // Run-claim: skip if a run is already in progress or succeeded for this date
-        val existingRun = ingestionRunRepository.findActiveRun(date)
-        if (existingRun != null) {
-            log.info("Ingestion skipped date={} — existing run id={} status={}", date, existingRun.first, existingRun.second)
-            return IngestionRunResult(existingRun.first, date, existingRun.second, 0, emptyMap(), 0)
+        // Run-claim: skip only if a run for this date is already in progress (RUNNING).
+        // SUCCESS does not block re-ingestion — DB constraints ensure idempotency.
+        val runningRun = ingestionRunRepository.findRunningRun(date)
+        if (runningRun != null) {
+            log.info("Ingestion skipped date={} — already RUNNING id={}", date, runningRun)
+            return IngestionRunResult(runningRun, date, "RUNNING", 0, emptyMap(), 0)
         }
 
         val runId = ingestionRunRepository.create(date)
