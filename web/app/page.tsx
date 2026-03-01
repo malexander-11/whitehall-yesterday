@@ -26,11 +26,11 @@ interface DailyIndexResponse {
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
 function londonYesterday(): string {
-  const now = new Date(
-    new Date().toLocaleString("en-GB", { timeZone: "Europe/London" })
-  );
-  now.setDate(now.getDate() - 1);
-  return now.toISOString().slice(0, 10);
+  // en-CA gives unambiguous YYYY-MM-DD format
+  const londonToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+  }).format(new Date());
+  return addDays(londonToday, -1);
 }
 
 function addDays(dateStr: string, n: number): string {
