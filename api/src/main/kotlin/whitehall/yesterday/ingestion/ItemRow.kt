@@ -11,5 +11,7 @@ data class ItemRow(
     val publishedAt: Instant,
     val updatedAt: Instant?,
     val tags: Map<String, Any?>,
-    val raw: Any      // verbatim upstream response — serialised to JSON by the repository
+    val raw: Any,           // verbatim upstream response — serialised to JSON by the repository
+    val sourceSubtype: String? = null,    // "bill" | "si" | null (govuk items omit this)
+    val sourceReference: String? = null   // stable external ID, e.g. "bill/1234" or "si/abc123"
 )

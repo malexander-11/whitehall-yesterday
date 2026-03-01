@@ -13,6 +13,9 @@ interface IndexItem {
   updatedAt?: string;
   format?: string;
   organisations: string[];
+  source: "govuk" | "parliament";
+  sourceSubtype?: "bill" | "si";
+  sourceReference?: string;
 }
 
 interface DailyIndexResponse {
@@ -72,6 +75,11 @@ function ItemCard({ item }: { item: IndexItem }) {
         </a>
       </div>
       <div style={styles.itemMeta}>
+        {item.source === "parliament" && (
+          <span style={styles.badgeParly}>
+            {item.sourceSubtype === "bill" ? "BILL" : "SI"}
+          </span>
+        )}
         {item.format && (
           <span style={styles.formatTag}>{item.format.replace(/_/g, " ")}</span>
         )}
@@ -101,8 +109,12 @@ export default async function Page({
 
   const data = await fetchDay(date);
 
-  const newItems = data?.items.filter((i) => i.bucket === "NEW") ?? [];
-  const updatedItems = data?.items.filter((i) => i.bucket === "UPDATED") ?? [];
+  const govukNew     = data?.items.filter((i) => i.source === "govuk"       && i.bucket === "NEW")     ?? [];
+  const govukUpdated = data?.items.filter((i) => i.source === "govuk"       && i.bucket === "UPDATED") ?? [];
+  const bills        = data?.items.filter((i) => i.sourceSubtype === "bill") ?? [];
+  const sis          = data?.items.filter((i) => i.sourceSubtype === "si")   ?? [];
+
+  const parliamentCount = bills.length + sis.length;
 
   return (
     <>
@@ -111,7 +123,7 @@ export default async function Page({
       <header style={styles.header}>
         <div>
           <h1 style={styles.headerH1}>Whitehall Yesterday</h1>
-          <div style={styles.tagline}>Daily structured index of UK government publications</div>
+          <div style={styles.tagline}>Daily structured index of UK government &amp; Parliament publications</div>
         </div>
       </header>
 
@@ -140,34 +152,63 @@ export default async function Page({
         ) : (
           <>
             <div style={styles.summary}>
-              <h2 style={styles.summaryH2}>Government publications — {date}</h2>
+              <h2 style={styles.summaryH2}>Publications &amp; Parliament — {date}</h2>
               <div style={styles.counts}>
                 <span>{data.totalCount} items total</span>
                 <span style={{ marginLeft: 16 }}>{data.newCount} new</span>
                 <span style={{ marginLeft: 16 }}>{data.updatedCount} updated</span>
+                {parliamentCount > 0 && (
+                  <span style={{ marginLeft: 16 }}>{parliamentCount} parliament</span>
+                )}
               </div>
             </div>
 
-            {newItems.length > 0 && (
+            {govukNew.length > 0 && (
               <section style={styles.section}>
                 <h2 style={styles.sectionTitle}>
                   <span style={styles.badgeNew}>NEW</span> Published yesterday
                 </h2>
                 <ul style={styles.itemList}>
-                  {newItems.map((item) => (
+                  {govukNew.map((item) => (
                     <ItemCard key={item.id} item={item} />
                   ))}
                 </ul>
               </section>
             )}
 
-            {updatedItems.length > 0 && (
+            {bills.length > 0 && (
+              <section style={styles.section}>
+                <h2 style={styles.sectionTitle}>
+                  <span style={styles.badgeParly}>BILL</span> Bills introduced
+                </h2>
+                <ul style={styles.itemList}>
+                  {bills.map((item) => (
+                    <ItemCard key={item.id} item={item} />
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {sis.length > 0 && (
+              <section style={styles.section}>
+                <h2 style={styles.sectionTitle}>
+                  <span style={styles.badgeParly}>SI</span> Statutory Instruments laid
+                </h2>
+                <ul style={styles.itemList}>
+                  {sis.map((item) => (
+                    <ItemCard key={item.id} item={item} />
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {govukUpdated.length > 0 && (
               <section style={styles.section}>
                 <h2 style={styles.sectionTitle}>
                   <span style={styles.badgeUpd}>UPDATED</span> Updated yesterday
                 </h2>
                 <ul style={styles.itemList}>
-                  {updatedItems.map((item) => (
+                  {govukUpdated.map((item) => (
                     <ItemCard key={item.id} item={item} />
                   ))}
                 </ul>
@@ -181,6 +222,10 @@ export default async function Page({
         Data sourced from{" "}
         <a href="https://www.gov.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
           GOV.UK
+        </a>
+        {" · "}
+        <a href="https://www.parliament.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
+          UK Parliament
         </a>
       </footer>
     </>
@@ -260,6 +305,15 @@ const styles = {
   } as React.CSSProperties,
   badgeUpd: {
     background: "#1d70b8",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 2,
+    letterSpacing: 0.5,
+  } as React.CSSProperties,
+  badgeParly: {
+    background: "#5C2D91",
     color: "#fff",
     fontSize: 11,
     fontWeight: 700,

@@ -22,12 +22,15 @@ class DailyIndexQueryRepository(
                 i.url,
                 i.published_at,
                 i.updated_at,
+                i.source,
+                i.source_subtype,
+                i.source_reference,
                 i.tags->>'format'        AS format,
                 i.tags->'organisations'  AS organisations_json
             FROM daily_index di
             JOIN items i ON i.id = di.canonical_id
             WHERE di.date = ?
-            ORDER BY di.bucket, i.published_at DESC
+            ORDER BY i.source, di.bucket, i.published_at DESC
             """.trimIndent(),
             { rs, _ ->
                 val orgsJson = rs.getString("organisations_json")
@@ -36,14 +39,17 @@ class DailyIndexQueryRepository(
                 else emptyList()
 
                 IndexItem(
-                    id            = rs.getString("id"),
-                    bucket        = rs.getString("bucket"),
-                    title         = rs.getString("title"),
-                    url           = rs.getString("url"),
-                    publishedAt   = rs.getObject("published_at", OffsetDateTime::class.java).toInstant(),
-                    updatedAt     = rs.getObject("updated_at", OffsetDateTime::class.java)?.toInstant(),
-                    format        = rs.getString("format"),
-                    organisations = orgs
+                    id              = rs.getString("id"),
+                    bucket          = rs.getString("bucket"),
+                    title           = rs.getString("title"),
+                    url             = rs.getString("url"),
+                    publishedAt     = rs.getObject("published_at", OffsetDateTime::class.java).toInstant(),
+                    updatedAt       = rs.getObject("updated_at", OffsetDateTime::class.java)?.toInstant(),
+                    format          = rs.getString("format"),
+                    organisations   = orgs,
+                    source          = rs.getString("source"),
+                    sourceSubtype   = rs.getString("source_subtype"),
+                    sourceReference = rs.getString("source_reference")
                 )
             },
             date

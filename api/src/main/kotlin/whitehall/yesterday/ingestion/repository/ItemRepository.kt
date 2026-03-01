@@ -17,6 +17,7 @@ class ItemRepository(
      * Upserts an item by canonical_id.
      * On conflict: updates title, timestamps, raw payload, and merges tags (JSONB union).
      * published_at is preserved as the earliest known value; created_at is never overwritten.
+     * source_subtype and source_reference are preserved via COALESCE (never cleared on re-upsert).
      */
     fun upsert(item: ItemRow) {
         val publishedAt = OffsetDateTime.ofInstant(item.publishedAt, ZoneOffset.UTC)
@@ -26,19 +27,22 @@ class ItemRepository(
 
         jdbc.update(
             """
-            INSERT INTO items (id, source, title, url, published_at, updated_at, tags, raw, created_at, modified_at)
-            VALUES (?, ?::source_enum, ?, ?, ?, ?, ?::jsonb, ?::jsonb, now(), now())
+            INSERT INTO items (id, source, title, url, published_at, updated_at, tags, raw, source_subtype, source_reference, created_at, modified_at)
+            VALUES (?, ?::source_enum, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, now(), now())
             ON CONFLICT (id) DO UPDATE SET
-                title        = EXCLUDED.title,
-                published_at = LEAST(items.published_at, EXCLUDED.published_at),
-                updated_at   = EXCLUDED.updated_at,
-                raw          = EXCLUDED.raw,
-                tags         = items.tags || EXCLUDED.tags,
-                modified_at  = now()
+                title            = EXCLUDED.title,
+                published_at     = LEAST(items.published_at, EXCLUDED.published_at),
+                updated_at       = EXCLUDED.updated_at,
+                raw              = EXCLUDED.raw,
+                tags             = items.tags || EXCLUDED.tags,
+                source_subtype   = COALESCE(EXCLUDED.source_subtype, items.source_subtype),
+                source_reference = COALESCE(EXCLUDED.source_reference, items.source_reference),
+                modified_at      = now()
             """.trimIndent(),
             item.id, item.source, item.title, item.url,
             publishedAt, updatedAt,
-            tagsJson, rawJson
+            tagsJson, rawJson,
+            item.sourceSubtype, item.sourceReference
         )
     }
 

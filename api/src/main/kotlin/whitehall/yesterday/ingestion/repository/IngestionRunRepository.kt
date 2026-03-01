@@ -11,6 +11,23 @@ class IngestionRunRepository(
     private val jdbc: JdbcTemplate,
     private val objectMapper: ObjectMapper
 ) {
+    /**
+     * Returns an existing (runId, status) for [date] if a run is RUNNING or SUCCESS.
+     * Used to prevent duplicate concurrent runs (run-claim locking).
+     */
+    fun findActiveRun(date: LocalDate): Pair<UUID, String>? {
+        val results = jdbc.query(
+            """
+            SELECT id, status FROM ingestion_runs
+            WHERE date = ? AND status IN ('RUNNING', 'SUCCESS')
+            ORDER BY started_at DESC LIMIT 1
+            """.trimIndent(),
+            { rs, _ -> UUID.fromString(rs.getString("id")) to rs.getString("status") },
+            date
+        )
+        return results.firstOrNull()
+    }
+
     /** Opens a new run record with status RUNNING. Returns the new run id. */
     fun create(date: LocalDate): UUID {
         val id = UUID.randomUUID()

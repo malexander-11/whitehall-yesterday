@@ -19,5 +19,8 @@ data class IndexItem(
     val publishedAt: Instant,
     val updatedAt: Instant?,
     val format: String?,
-    val organisations: List<String>
+    val organisations: List<String>,
+    val source: String,
+    val sourceSubtype: String?,
+    val sourceReference: String?
 )
