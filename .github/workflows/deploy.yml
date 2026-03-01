@@ -5,43 +5,20 @@ on:
     branches: [main]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
       - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy API
+        working-directory: api
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Build and push API image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./api
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/whitehall-yesterday-api:latest
-
-      - name: Build and push web image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./web
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/whitehall-yesterday-web:latest
-
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /srv/whitehall-yesterday
-            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
-            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+      - name: Deploy web
+        working-directory: web
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

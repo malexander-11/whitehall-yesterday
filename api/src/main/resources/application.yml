@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/whitehall_yesterday}
-    username: ${DB_USERNAME:whitehall}
-    password: ${DB_PASSWORD:whitehall}
+    url: jdbc:postgresql://localhost:5432/whitehall_yesterday
+    username: whitehall
+    password: whitehall
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true

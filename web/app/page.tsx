@@ -181,10 +181,6 @@ export default async function Page({
         Data sourced from{" "}
         <a href="https://www.gov.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
           GOV.UK
-        </a>{" "}
-        &mdash;{" "}
-        <a href="/ops/runs" style={{ color: "#1d70b8" }}>
-          Ingestion runs
         </a>
       </footer>
     </>

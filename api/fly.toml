@@ -1,0 +1,14 @@
+app = "whitehall-yesterday-api"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TZ = "Europe/London"
+  JAVA_TOOL_OPTIONS = "-Xmx256m -XX:+UseContainerSupport"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
