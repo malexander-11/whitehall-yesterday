@@ -1,0 +1,102 @@
+networks:
+  proxy:
+  data:
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    networks: [data]
+    environment:
+      POSTGRES_DB: whitehall_yesterday
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d whitehall_yesterday"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    mem_limit: 200m
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+  api:
+    image: ghcr.io/${GITHUB_OWNER}/whitehall-yesterday-api:latest
+    networks: [proxy, data]
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/whitehall_yesterday
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      TZ: Europe/London
+      JAVA_TOOL_OPTIONS: "-Xmx256m -XX:+UseContainerSupport"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    mem_limit: 450m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    image: ghcr.io/${GITHUB_OWNER}/whitehall-yesterday-web:latest
+    networks: [proxy]
+    environment:
+      API_BASE_URL: http://api:8080
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    mem_limit: 200m
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+  caddy:
+    image: caddy:2-alpine
+    networks: [proxy]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_HASH: ${ADMIN_HASH}
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }

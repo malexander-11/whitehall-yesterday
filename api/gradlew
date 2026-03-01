@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Gradle wrapper script for Unix.
+# Apache License 2.0 — standard Gradle boilerplate.
+#
+set -e
+
+APP_HOME="$(cd "$(dirname "$0")" && pwd)"
+CLASSPATH="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+
+if [ ! -f "$CLASSPATH" ]; then
+    echo "ERROR: Gradle wrapper JAR not found at $CLASSPATH"
+    echo "Bootstrap it with: gradle wrapper --gradle-version 8.11.1"
+    echo "Or build via Docker: docker-compose up --build"
+    exit 1
+fi
+
+if [ -n "$JAVA_HOME" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+    if [ ! -f "$JAVACMD" ]; then
+        echo "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME"
+        exit 1
+    fi
+else
+    JAVACMD="java"
+    which java >/dev/null 2>&1 || {
+        echo "ERROR: JAVA_HOME is not set and no 'java' command found in PATH."
+        exit 1
+    }
+fi
+
+exec "$JAVACMD" \
+    -classpath "$CLASSPATH" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"

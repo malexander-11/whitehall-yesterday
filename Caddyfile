@@ -1,0 +1,26 @@
+{$DOMAIN} {
+
+    # Protected: ops dashboard + manual ingest trigger
+    @admin {
+        path /ops/* /v1/ingest/*
+    }
+    basicauth @admin {
+        {env.ADMIN_USER} {env.ADMIN_HASH}
+    }
+
+    # API routes — explicit paths before the catch-all
+    reverse_proxy /v1/*   api:8080
+    reverse_proxy /ops/*  api:8080
+    reverse_proxy /health api:8080
+    reverse_proxy /ready  api:8080
+
+    # Frontend — catch-all
+    reverse_proxy /*      web:3000
+
+    # Security headers
+    header {
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}
