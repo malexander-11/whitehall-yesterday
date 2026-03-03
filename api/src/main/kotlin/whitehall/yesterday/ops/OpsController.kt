@@ -6,8 +6,12 @@ import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import whitehall.yesterday.search.BackfillResult
+import whitehall.yesterday.search.EmbeddingWorker
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -60,9 +64,18 @@ class OpsRepository(
 
 @RestController
 @RequestMapping("/ops")
-class OpsController(private val repo: OpsRepository) {
+class OpsController(
+    private val repo: OpsRepository,
+    private val embeddingWorker: EmbeddingWorker
+) {
 
     @GetMapping("/runs")
     fun getRuns(): ResponseEntity<OpsRunsResponse> =
         ResponseEntity.ok(OpsRunsResponse(repo.recentRuns()))
+
+    @PostMapping("/embeddings/backfill")
+    fun backfillEmbeddings(
+        @RequestParam(defaultValue = "500") limit: Int
+    ): ResponseEntity<BackfillResult> =
+        ResponseEntity.ok(embeddingWorker.backfill(limit))
 }

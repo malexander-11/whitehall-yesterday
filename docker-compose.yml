@@ -1,7 +1,7 @@
 services:
 
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: whitehall_yesterday
       POSTGRES_USER: whitehall
@@ -26,6 +26,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/whitehall_yesterday
       SPRING_DATASOURCE_USERNAME: whitehall
       SPRING_DATASOURCE_PASSWORD: whitehall
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

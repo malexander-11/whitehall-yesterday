@@ -8,7 +8,8 @@ data class DailyIndexResponse(
     val totalCount: Int,
     val newCount: Int,
     val updatedCount: Int,
-    val items: List<IndexItem>
+    val items: List<IndexItem>,
+    val query: String? = null
 )
 
 data class IndexItem(

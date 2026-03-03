@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 import whitehall.yesterday.ingestion.repository.DailyIndexRepository
 import whitehall.yesterday.ingestion.repository.IngestionRunRepository
 import whitehall.yesterday.ingestion.repository.ItemRepository
+import whitehall.yesterday.search.EmbeddingWorker
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -14,7 +15,8 @@ class IngestionService(
     private val ingesters: List<SourceIngester>,
     private val itemRepository: ItemRepository,
     private val dailyIndexRepository: DailyIndexRepository,
-    private val ingestionRunRepository: IngestionRunRepository
+    private val ingestionRunRepository: IngestionRunRepository,
+    private val embeddingWorker: EmbeddingWorker
 ) {
     private val log = LoggerFactory.getLogger(IngestionService::class.java)
 
@@ -24,7 +26,7 @@ class IngestionService(
      * Lifecycle:
      *  1. Open run (status = RUNNING). If one is already RUNNING, return early (concurrent guard).
      *  2. Call each [SourceIngester] to fetch items for the date window.
-     *  3. Classify GOV.UK items as NEW/UPDATED via DB lookup; Parliament items are always NEW.
+     *  3. Classify GOV.UK items as NEW/UPDATED via DB lookup; all other sources are always NEW.
      *  4. Upsert all items.
      *  5. Atomically rebuild daily_index for [date].
      *  6. Mark run SUCCESS with per-source counts.
@@ -57,16 +59,16 @@ class IngestionService(
 
             // Bucket classification:
             //   - GOV.UK: DB-based (items seen before this window → UPDATED, others → NEW)
-            //   - Parliament: always NEW per spec
-            val govukItems = allItems.filter { it.source == "govuk" }
-            val parliamentItems = allItems.filter { it.source == "parliament" }
+            //   - Parliament, ONS: always NEW per spec
+            val govukItems  = allItems.filter { it.source == "govuk" }
+            val alwaysNew   = allItems.filter { it.source != "govuk" }
 
             val existingIds = if (govukItems.isEmpty()) emptySet()
                               else itemRepository.existingIds(govukItems.map { it.id }, window.start)
 
             val itemsWithBuckets: List<Pair<ItemRow, Bucket>> = govukItems.map { item ->
                 item to if (item.id in existingIds) Bucket.UPDATED else Bucket.NEW
-            } + parliamentItems.map { item ->
+            } + alwaysNew.map { item ->
                 item to Bucket.NEW
             }
 
@@ -86,6 +88,8 @@ class IngestionService(
 
             val durationMs = Duration.between(startedAt, Instant.now()).toMillis()
             log.info("Ingestion complete date={} total={} sources={} durationMs={}", date, totalCount, sourceCounts, durationMs)
+
+            embeddingWorker.generateForDate(date)  // async — returns immediately, failure is non-fatal
 
             IngestionRunResult(runId, date, "SUCCESS", totalCount, sourceCounts, durationMs)
         } catch (e: Exception) {

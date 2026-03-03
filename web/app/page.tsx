@@ -1,8 +1,8 @@
-import { Suspense } from "react";
+import DayContent from "./components/DayContent";
 
 const API_BASE = process.env.API_BASE_URL ?? "http://localhost:8080";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface IndexItem {
   id: string;
@@ -13,8 +13,8 @@ interface IndexItem {
   updatedAt?: string;
   format?: string;
   organisations: string[];
-  source: "govuk" | "parliament";
-  sourceSubtype?: "bill" | "si";
+  source: "govuk" | "parliament" | "ons";
+  sourceSubtype?: "bill" | "si" | "release";
   sourceReference?: string;
 }
 
@@ -26,10 +26,9 @@ interface DailyIndexResponse {
   items: IndexItem[];
 }
 
-// ── Date helpers ─────────────────────────────────────────────────────────────
+// ── Date helpers ──────────────────────────────────────────────────────────────
 
 function londonYesterday(): string {
-  // en-CA gives unambiguous YYYY-MM-DD format
   const londonToday = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
   }).format(new Date());
@@ -37,7 +36,7 @@ function londonYesterday(): string {
 }
 
 function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + "T12:00:00Z"); // noon UTC avoids DST edge cases
+  const d = new Date(dateStr + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
@@ -64,57 +63,22 @@ async function fetchDay(date: string): Promise<DailyIndexResponse | null> {
   return res.json();
 }
 
-// ── Components ────────────────────────────────────────────────────────────────
-
-function ItemCard({ item }: { item: IndexItem }) {
-  return (
-    <li style={styles.item}>
-      <div style={styles.itemTitle}>
-        <a href={item.url} target="_blank" rel="noopener" style={styles.itemLink}>
-          {item.title}
-        </a>
-      </div>
-      <div style={styles.itemMeta}>
-        {item.source === "parliament" && (
-          <span style={styles.badgeParly}>
-            {item.sourceSubtype === "bill" ? "BILL" : "SI"}
-          </span>
-        )}
-        {item.format && (
-          <span style={styles.formatTag}>{item.format.replace(/_/g, " ")}</span>
-        )}
-        {item.organisations.map((org) => (
-          <span key={org} style={styles.org}>
-            · {org.replace(/-/g, " ")}
-          </span>
-        ))}
-      </div>
-    </li>
-  );
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; source?: string }>;
 }) {
   const params = await searchParams;
   const yesterday = londonYesterday();
   const date = params.date ?? yesterday;
+  const source = params.source ?? "";
   const prevDate = addDays(date, -1);
   const nextDate = addDays(date, 1);
   const hasNext = nextDate < yesterday;
 
   const data = await fetchDay(date);
-
-  const govukNew     = data?.items.filter((i) => i.source === "govuk"       && i.bucket === "NEW")     ?? [];
-  const govukUpdated = data?.items.filter((i) => i.source === "govuk"       && i.bucket === "UPDATED") ?? [];
-  const bills        = data?.items.filter((i) => i.sourceSubtype === "bill") ?? [];
-  const sis          = data?.items.filter((i) => i.sourceSubtype === "si")   ?? [];
-
-  const parliamentCount = bills.length + sis.length;
 
   return (
     <>
@@ -139,89 +103,16 @@ export default async function Page({
         )}
       </nav>
 
-      <main style={styles.container}>
-        {!data ? (
-          <div style={styles.noData}>
-            <strong>No data for {date}</strong>
-            <p style={styles.noDataP}>
-              Ingestion has not run for this date, or it failed. Try{" "}
-              <a href="/" style={{ color: "#1d70b8" }}>yesterday</a> or trigger
-              a manual ingest: <code>POST /v1/ingest/{date}</code>
-            </p>
-          </div>
-        ) : (
-          <>
-            <div style={styles.summary}>
-              <h2 style={styles.summaryH2}>Publications &amp; Parliament — {date}</h2>
-              <div style={styles.counts}>
-                <span>{data.totalCount} items total</span>
-                <span style={{ marginLeft: 16 }}>{data.newCount} new</span>
-                <span style={{ marginLeft: 16 }}>{data.updatedCount} updated</span>
-                {parliamentCount > 0 && (
-                  <span style={{ marginLeft: 16 }}>{parliamentCount} parliament</span>
-                )}
-              </div>
-            </div>
-
-            {govukNew.length > 0 && (
-              <section style={styles.section}>
-                <h2 style={styles.sectionTitle}>
-                  <span style={styles.badgeNew}>NEW</span> Published yesterday
-                </h2>
-                <ul style={styles.itemList}>
-                  {govukNew.map((item) => (
-                    <ItemCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {bills.length > 0 && (
-              <section style={styles.section}>
-                <h2 style={styles.sectionTitle}>
-                  <span style={styles.badgeParly}>BILL</span> Bills introduced
-                </h2>
-                <ul style={styles.itemList}>
-                  {bills.map((item) => (
-                    <ItemCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {sis.length > 0 && (
-              <section style={styles.section}>
-                <h2 style={styles.sectionTitle}>
-                  <span style={styles.badgeParly}>SI</span> Statutory Instruments laid
-                </h2>
-                <ul style={styles.itemList}>
-                  {sis.map((item) => (
-                    <ItemCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {govukUpdated.length > 0 && (
-              <section style={styles.section}>
-                <h2 style={styles.sectionTitle}>
-                  <span style={styles.badgeUpd}>UPDATED</span> Updated yesterday
-                </h2>
-                <ul style={styles.itemList}>
-                  {govukUpdated.map((item) => (
-                    <ItemCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              </section>
-            )}
-          </>
-        )}
-      </main>
+      <DayContent data={data} date={date} source={source} />
 
       <footer style={styles.footer}>
         Data sourced from{" "}
         <a href="https://www.gov.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
           GOV.UK
+        </a>
+        {" · "}
+        <a href="https://www.ons.gov.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
+          ONS
         </a>
         {" · "}
         <a href="https://www.parliament.uk" target="_blank" rel="noopener" style={{ color: "#1d70b8" }}>
@@ -263,92 +154,6 @@ const styles = {
   } as React.CSSProperties,
   navLink: { textDecoration: "none", fontSize: 14, fontWeight: 600, color: "#1d70b8" } as React.CSSProperties,
   dateLabel: { fontSize: 15, fontWeight: 700, flex: 1 } as React.CSSProperties,
-
-  container: { maxWidth: 960, margin: "24px auto", padding: "0 24px" } as React.CSSProperties,
-
-  noData: {
-    background: "#fff",
-    borderLeft: "6px solid #f47738",
-    padding: "16px 20px",
-    marginBottom: 24,
-  } as React.CSSProperties,
-  noDataP: { fontSize: 15, color: "#505a5f", marginTop: 6 } as React.CSSProperties,
-
-  summary: {
-    background: "#fff",
-    borderLeft: "6px solid #1d70b8",
-    padding: "16px 20px",
-    marginBottom: 24,
-  } as React.CSSProperties,
-  summaryH2: { fontSize: 18, marginBottom: 4 } as React.CSSProperties,
-  counts: { fontSize: 14, color: "#505a5f", marginTop: 6 } as React.CSSProperties,
-
-  section: { marginBottom: 32 } as React.CSSProperties,
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 700,
-    borderBottom: "2px solid #b1b4b6",
-    paddingBottom: 8,
-    marginBottom: 16,
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  } as React.CSSProperties,
-  badgeNew: {
-    background: "#00703c",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: 700,
-    padding: "2px 8px",
-    borderRadius: 2,
-    letterSpacing: 0.5,
-  } as React.CSSProperties,
-  badgeUpd: {
-    background: "#1d70b8",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: 700,
-    padding: "2px 8px",
-    borderRadius: 2,
-    letterSpacing: 0.5,
-  } as React.CSSProperties,
-  badgeParly: {
-    background: "#5C2D91",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: 700,
-    padding: "2px 8px",
-    borderRadius: 2,
-    letterSpacing: 0.5,
-  } as React.CSSProperties,
-
-  itemList: { listStyle: "none" } as React.CSSProperties,
-  item: {
-    background: "#fff",
-    border: "1px solid #b1b4b6",
-    borderRadius: 2,
-    padding: "14px 16px",
-    marginBottom: 10,
-  } as React.CSSProperties,
-  itemTitle: {} as React.CSSProperties,
-  itemLink: { fontSize: 16, fontWeight: 600, textDecoration: "none", color: "#1d70b8" } as React.CSSProperties,
-  itemMeta: {
-    fontSize: 13,
-    color: "#505a5f",
-    marginTop: 6,
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-    alignItems: "center",
-  } as React.CSSProperties,
-  formatTag: {
-    background: "#f3f2f1",
-    border: "1px solid #b1b4b6",
-    padding: "1px 7px",
-    borderRadius: 2,
-    fontSize: 12,
-  } as React.CSSProperties,
-  org: { fontSize: 12, color: "#505a5f" } as React.CSSProperties,
 
   footer: { textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: "#505a5f" } as React.CSSProperties,
 };

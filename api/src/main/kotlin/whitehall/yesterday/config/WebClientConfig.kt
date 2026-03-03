@@ -42,4 +42,19 @@ class WebClientConfig {
         .baseUrl("https://statutoryinstruments-api.parliament.uk")
         .defaultHeader("User-Agent", "whitehall-yesterday/1.0")
         .build()
+
+    @Bean
+    @Qualifier("ons")
+    fun onsRestClient(builder: RestClient.Builder): RestClient = builder
+        .requestFactory(buildFactory())
+        .baseUrl("https://api.beta.ons.gov.uk")
+        .defaultHeader("User-Agent", "whitehall-yesterday/1.0")
+        .build()
+
+    @Bean
+    @Qualifier("voyage")
+    fun voyageRestClient(builder: RestClient.Builder): RestClient = builder
+        .requestFactory(buildFactory(connectSecs = 10, readSecs = 60))
+        .baseUrl("https://api.voyageai.com")
+        .build()
 }
