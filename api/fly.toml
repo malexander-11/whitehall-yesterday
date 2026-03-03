@@ -8,6 +8,25 @@ primary_region = "lhr"
   TZ = "Europe/London"
   JAVA_TOOL_OPTIONS = "-Xmx256m -XX:+UseContainerSupport"
 
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.http_checks]
+    grace_period = "30s"
+    interval = "30s"
+    method = "get"
+    path = "/health"
+    timeout = "5s"
+
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"
