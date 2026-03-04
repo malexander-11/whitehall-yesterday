@@ -17,21 +17,23 @@ class SearchRepository(
      * Hybrid search over items indexed for [date].
      *
      * Strategy:
-     *  1. Lexical: ts_rank_cd over search_tsv (always runs)
+     *  1. Lexical: ts_rank_cd over search_tsv for each query in [lexicalQueries], results unioned (max score per ID)
      *  2. Semantic: cosine similarity over embedding (runs if queryEmbedding != null)
-     *  3. Union candidates, normalise scores 0–1, apply 0.6 * sem + 0.4 * lex weighting
-     *  4. Return top [limit] items starting at [offset], ranked by final_score
+     *  3. Reciprocal Rank Fusion (RRF, k=60) to merge candidate lists
+     *  4. Title boost applied within the result page (full phrase = +0.05, all tokens = +0.02)
+     *  5. Return top [limit] items starting at [offset]
      *
      * Gracefully degrades to lexical-only when queryEmbedding is null (e.g. Voyage unavailable).
      */
     fun search(
         date: LocalDate,
-        queryText: String,
+        displayQuery: String,
+        lexicalQueries: List<String>,
         queryEmbedding: FloatArray?,
         limit: Int,
         offset: Int
     ): List<IndexItem> {
-        val lexScores: Map<String, Double> = runLexicalQuery(date, queryText)
+        val lexScores: Map<String, Double> = runLexicalQuery(date, lexicalQueries)
         val semScores: Map<String, Double> = if (queryEmbedding != null)
             runSemanticQuery(date, queryEmbedding)
         else
@@ -40,33 +42,51 @@ class SearchRepository(
         val allIds = (lexScores.keys + semScores.keys).toSet()
         if (allIds.isEmpty()) return emptyList()
 
-        val normLex = normalise(lexScores)
-        val normSem = normalise(semScores)
+        // Reciprocal Rank Fusion (Cormack & Clarke 2009, k=60)
+        val lexRanks = lexScores.entries.sortedByDescending { it.value }
+            .mapIndexed { idx, (id, _) -> id to (idx + 1) }.toMap()
+        val semRanks = semScores.entries.sortedByDescending { it.value }
+            .mapIndexed { idx, (id, _) -> id to (idx + 1) }.toMap()
+        val k = 60
+        val rrfScores: Map<String, Double> = allIds.associateWith { id ->
+            val lexRrf = lexRanks[id]?.let { 1.0 / (k + it) } ?: 0.0
+            val semRrf = semRanks[id]?.let { 1.0 / (k + it) } ?: 0.0
+            lexRrf + semRrf
+        }
 
-        val ranked = allIds
-            .map { id ->
-                val score = 0.6 * (normSem[id] ?: 0.0) + 0.4 * (normLex[id] ?: 0.0)
-                id to score
-            }
-            .sortedByDescending { (_, score) -> score }
-
-        val pageIds = ranked.drop(offset).take(limit).map { (id, _) -> id }
+        val rankedIds = allIds.sortedByDescending { rrfScores[it]!! }
+        val pageIds = rankedIds.drop(offset).take(limit)
         if (pageIds.isEmpty()) return emptyList()
 
-        val itemsByid = fetchItemsByIds(date, pageIds)
-        // Restore rank order
-        return pageIds.mapNotNull { itemsByid[it] }
+        val itemsById = fetchItemsByIds(date, pageIds)
+        val pageItems = pageIds.mapNotNull { itemsById[it] }
+
+        return applyTitleBoost(pageItems, rrfScores, displayQuery)
     }
 
-    private fun runLexicalQuery(date: LocalDate, queryText: String): Map<String, Double> {
-        val placeholders = "plainto_tsquery('english', ?)"
+    /**
+     * Runs one lexical query per entry in [queries], unions results (max score per ID).
+     * Multiple queries implement OR semantics for acronym/synonym expansion.
+     */
+    private fun runLexicalQuery(date: LocalDate, queries: List<String>): Map<String, Double> {
+        val allScores = mutableMapOf<String, Double>()
+        for (query in queries) {
+            runSingleLexicalQuery(date, query).forEach { (id, score) ->
+                allScores[id] = maxOf(allScores.getOrDefault(id, 0.0), score)
+            }
+        }
+        return allScores
+    }
+
+    private fun runSingleLexicalQuery(date: LocalDate, queryText: String): Map<String, Double> {
+        val tsQuery = "plainto_tsquery('english', ?)"
         return jdbc.query(
             """
-            SELECT i.id, ts_rank_cd(i.search_tsv, $placeholders) AS lex_score
+            SELECT i.id, ts_rank_cd(i.search_tsv, $tsQuery) AS lex_score
             FROM items i
             JOIN daily_index di ON di.canonical_id = i.id
             WHERE di.date = ?
-              AND i.search_tsv @@ $placeholders
+              AND i.search_tsv @@ $tsQuery
             ORDER BY lex_score DESC
             LIMIT 200
             """.trimIndent(),
@@ -140,17 +160,27 @@ class SearchRepository(
     }
 
     /**
-     * Min-max normalises scores to [0, 1].
-     * When max == min (all identical, or single result), returns 1.0 for all to avoid division-by-zero.
+     * Re-sorts [items] within the page by RRF score + a title-match boost.
+     * Boost values are calibrated against the RRF range for 200-result sets (~0.006–0.033):
+     *   - Full phrase in title: +0.05 (guarantees top rank for exact matches)
+     *   - All query tokens in title: +0.02 (strong boost without overriding semantic relevance)
      */
-    private fun normalise(scores: Map<String, Double>): Map<String, Double> {
-        if (scores.isEmpty()) return emptyMap()
-        val min = scores.values.min()
-        val max = scores.values.max()
-        return if (max == min) {
-            scores.mapValues { 1.0 }
-        } else {
-            scores.mapValues { (_, v) -> (v - min) / (max - min) }
+    private fun applyTitleBoost(
+        items: List<IndexItem>,
+        rrfScores: Map<String, Double>,
+        query: String
+    ): List<IndexItem> {
+        val q = query.lowercase()
+        val tokens = q.split(Regex("\\s+")).filter { it.length > 2 }
+        return items.sortedByDescending { item ->
+            val title = item.title.lowercase()
+            val rrf = rrfScores[item.id] ?: 0.0
+            val boost = when {
+                title.contains(q) -> 0.05
+                tokens.isNotEmpty() && tokens.all { title.contains(it) } -> 0.02
+                else -> 0.0
+            }
+            rrf + boost
         }
     }
 }

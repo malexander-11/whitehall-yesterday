@@ -26,12 +26,14 @@ class SearchController(
             return ResponseEntity.badRequest().build()
         }
 
-        val queryEmbedding = embeddingService.embed(listOf(request.query))
-            .firstOrNull()
+        // Expand query for lexical FTS (acronyms, synonyms); embed original query only
+        val lexicalQueries = QueryExpander.expand(request.query)
+        val queryEmbedding = embeddingService.embed(listOf(request.query)).firstOrNull()
 
         val items = searchRepository.search(
             date           = date,
-            queryText      = request.query,
+            displayQuery   = request.query,
+            lexicalQueries = lexicalQueries,
             queryEmbedding = queryEmbedding,
             limit          = request.limit.coerceIn(1, 200),
             offset         = request.offset.coerceAtLeast(0)
